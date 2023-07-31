@@ -1,0 +1,227 @@
+---
+title: "Decisions"
+output: learnr::tutorial
+runtime: shiny_prerendered
+---
+
+```{r setup-hide, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(learnr)
+```
+
+## Exam Marks
+Let's consider the dataset `gradebook2` again. The following code has been run to load the data and the libraries we'll need:
+
+```{r setup, include=TRUE, message = FALSE}
+library(tidyverse)
+
+gradebook2 <- read.csv("https://raw.githubusercontent.com/sta238/data/main/gradebook2.csv")
+```
+
+We want to compute a $95\%$ confidence interval for the mean of the exam marks. Let's use a few different methods and compare.
+
+### Assume exam marks are normally distributed
+
+Plot the exam marks to see if they look normally distributed. Include a histogram and KDE of the exam marks, along with a layer showing a normal distribution with appropriate arguments. Adjust options (e.g. colour, transparency, line type) and provide informative labels so that the different layers can be easily interpreted. 
+
+```{r plot-exam, exercise=TRUE}
+xbar <- mean(gradebook2$exam)
+sn <- sd(gradebook2$exam)
+
+gradebook2 %>%
+  ggplot(aes(x=exam)) +
+  theme_bw() +
+  geom_density(colour = "black") +
+  geom_histogram(aes(y=after_stat(density)), bins = 15, color="black", alpha = 0.2) +
+  stat_function(fun = dnorm, args = c(mean = xbar, sd = sn), color="blue", linetype="dashed") +
+  labs(title = "Distribution of exam marks",
+       caption = "Black: Empirical distribution. Dashed blue: Normal distribution")
+```
+
+Compute the $95\%$ confidence interval, assuming the data generating process for the exam marks follows a normal distribution.
+```{r CI-t, exercise=TRUE}
+xbar <- mean(gradebook2$exam)
+sn <- sd(gradebook2$exam)
+n <- length(gradebook2$exam)
+critval_t <- qt(0.025, df = n-1, lower.tail = FALSE)
+
+# Compute the confidence interval
+tibble(
+  "lower" = xbar - critval_t*sn/sqrt(n),
+  "upper" = xbar + critval_t*sn/sqrt(n)
+)
+```
+
+
+
+### Assume n is sufficiently large 
+
+Compute the $95\%$ confidence interval, assuming the sample size is large enough that the Central Limit Theorem applies.
+```{r CI-norm, exercise=TRUE}
+xbar <- mean(gradebook2$exam)
+sn <- sd(gradebook2$exam)
+n <- length(gradebook2$exam)
+critval_z <- qnorm(0.025, lower.tail = FALSE)
+
+# Compute the confidence interval
+tibble(
+  "lower" = xbar - critval_z*sn/sqrt(n),
+  "upper" = xbar + critval_z*sn/sqrt(n)
+)
+```
+
+
+### No extra assumptions
+
+Use the bootstrap principle to compute the $95\%$ confidence interval.
+
+```{r CI-boot, exercise=TRUE}
+set.seed(238)
+
+B <- 1000
+
+n <- length(gradebook2$exam)
+xbar <- mean(gradebook2$exam)
+sn <- sd(gradebook2$exam)
+
+# Generate bootstrap statistic
+bootTn <- numeric(B)
+for (i in 1:B){
+  bootsamp <- sample(gradebook2$exam, n, replace = TRUE)
+  bootTn[i] <- (mean(bootsamp) - xbar) / (sd(bootsamp) / sqrt(n))
+}
+
+# Find critical values from bootstrap distribution
+alpha <- 0.05 # set the confidence level
+critvals <- tibble(
+  "cl" = quantile(bootTn, probs = alpha/2)[[1]], 
+  "cu" = quantile(bootTn, probs = 1 - alpha/2)[[1]]
+  )
+
+# Compute the confidence interval
+tibble(
+  "lower" = xbar - critvals$cu * sn/sqrt(n),
+  "upper" = xbar - critvals$cl * sn/sqrt(n)
+)
+```
+
+
+
+## Times
+
+For this section, I have generated a vector called `times` from an exponential distribution. 
+
+```{r setup-times}
+set.seed(238)
+
+times <- rexp(30, rate = 2)
+```
+
+
+### Confidence intervals
+
+Find a $95\%$ confidence interval for the mean, $\mu$, using an appropriate method, and use that to compute a $95\%$ confidence interval for $\lambda$.
+
+```{r CI-mu-lambda, exercise=TRUE, exercise.setup = "setup-times"}
+set.seed(238)
+
+B <- 1000
+alpha <- 0.05 # set the confidence level
+
+n <- length(times)
+xbar <- mean(times)
+sn <- sd(times)
+
+# Generate bootstrap statistic
+bootTn <- numeric(B)
+for (i in 1:B){
+  bootsamp <- sample(times, n, replace = TRUE)
+  bootTn[i] <- (mean(bootsamp) - xbar) / (sd(bootsamp) / sqrt(n))
+}
+
+# Find critical values from bootstrap distribution
+critvals <- tibble(
+  "cl" = quantile(bootTn, probs = alpha/2)[[1]], 
+  "cu" = quantile(bootTn, probs = 1 - alpha/2)[[1]]
+  )
+
+CI_mu <- tibble(
+  "lower" = xbar - critvals$cu * sn/sqrt(n),
+  "upper" = xbar - critvals$cl * sn/sqrt(n)
+)
+
+# The confidence interval for the mean:
+CI_mu
+
+# The confidence interval for lambda:
+tibble( 
+  "lower" = 1/CI_mu$upper,
+  "upper" = 1/CI_mu$lower
+)
+
+```
+
+### Testing claims
+
+Say someone is claiming that the true value of $\lambda$ is 3.5 / hour. 
+
+#### Likelihood ratio test
+
+Use a likelihood ratio test to determine if our data gives any evidence against this claim. Note that you'll need to compute the MLE and the likelihood ratio.
+
+```{r likelihood-ratio, exercise=TRUE, exercise.setup = "setup-times"}
+n <- length(times)
+
+# Claim:
+lambda0 <- 3.5
+
+# Estimate:
+lambda_mle <- 1/mean(times)
+
+# Define the log likelihood function
+loglikelihoodfcn <- function(lambda){
+  n*log(lambda) - lambda*sum(times)
+}
+
+# Compute the likelihood ratio
+LR <- exp(loglikelihoodfcn(lambda0))/exp(loglikelihoodfcn(lambda_mle))
+
+
+# Do a likelihood ratio test to check if the data supports the claim
+lr <- -2*log(LR)
+1 - pchisq(lr, df = 1)
+```
+
+
+#### t-test
+
+Use a bootstrap t-test to determine if our data gives any evidence against this claim.
+
+```{r t-test, exercise=TRUE, exercise.setup = "setup-times"}
+set.seed(238)
+
+n <- length(times)
+B <- 100000
+
+# Claim:
+lambda0 <- 3.5
+mu0 <- 1/lambda0
+
+# Estimate:
+xbar <- mean(times)
+
+#empirical bootstrap
+Tboot <- numeric(B)
+for (i in 1:B){
+  bootsamp <- sample(times, n, replace=TRUE) 
+  Tboot[i] <- mean(bootsamp - xbar)
+}
+
+sum(abs(Tboot) >= abs(xbar - mu0) ) / B
+```
+
+
+
+
+
+
