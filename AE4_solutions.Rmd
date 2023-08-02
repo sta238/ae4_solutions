@@ -201,24 +201,33 @@ Use a bootstrap t-test to determine if our data gives any evidence against this 
 set.seed(238)
 
 n <- length(times)
-B <- 100000
+B <- 10000
 
 # Claim:
 lambda0 <- 3.5
 mu0 <- 1/lambda0
 
-# Estimate:
+# Data values:
 xbar <- mean(times)
+sn <- sd(times)
+
+tobs <- (xbar - mu0) / (sn/sqrt(n))
 
 #empirical bootstrap
 Tboot <- numeric(B)
 for (i in 1:B){
   bootsamp <- sample(times, n, replace=TRUE) 
-  Tboot[i] <- mean(bootsamp - xbar)
+  bootmean <- mean(bootsamp)
+  bootse <- sd(bootsamp)/sqrt(n)
+  Tboot[i] <- (bootmean - xbar) / bootse
 }
 
-sum(abs(Tboot) >= abs(xbar - mu0) ) / B
+sum(abs(Tboot) >= abs(tobs) ) / B
 ```
+
+
+
+
 
 
 
